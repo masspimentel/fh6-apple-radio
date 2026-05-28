@@ -39,6 +39,7 @@ add_library(version SHARED
     src/http/http_server.cpp
     src/sources/local_file_source.cpp
     src/sources/youtube_music_source.cpp
+    src/sources/apple_music_source.cpp
 )
 
 target_include_directories(version PRIVATE

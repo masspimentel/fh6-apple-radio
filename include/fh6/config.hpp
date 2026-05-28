@@ -44,12 +44,20 @@ struct AudioConfig {
     float output_gain = 1.0f;
 };
 
+struct AppleMusicConfig {
+    bool enabled = false;
+    std::string developer_token;
+    std::string storefront = "ca";
+    std::string playback_mode = "browser";
+};
+
 struct Config {
     GeneralConfig general;
     LocalFilesConfig local_files;
     YouTubeMusicConfig youtube_music;
     AudioConfig audio;
     PlaybackConfig playback;
+    AppleMusicConfig apple_music;
 };
 
 // Missing file is fine, defaults are returned.

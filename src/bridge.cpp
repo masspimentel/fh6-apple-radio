@@ -11,6 +11,7 @@
 #include "fh6/http/http_server.hpp"
 #include "fh6/sources/local_file_source.hpp"
 #include "fh6/sources/youtube_music_source.hpp"
+#include "fh6/sources/apple_music_source.hpp"
 
 #include <windows.h>
 #include <array>
@@ -117,6 +118,14 @@ void run_bridge(HMODULE self) noexcept {
             if (src->initialize()) mgr.register_source(std::move(src));
         } else if (!c.youtube_music.enabled && mgr.find("youtube_music")) {
             mgr.unregister_source("youtube_music");
+        }
+        if (c.apple_music.enabled && !mgr.find("apple_music")) {
+            auto src = std::make_unique<sources::AppleMusicSource>(c.apple_music);
+            if (src->initialize()) {
+                mgr.register_source(std::move(src));
+                }
+        } else if (!c.apple_music.enabled && mgr.find("apple_music")) {
+            mgr.unregister_source("apple_music");
         }
     };
 

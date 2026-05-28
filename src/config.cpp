@@ -78,6 +78,12 @@ Config load_config(const std::filesystem::path& path) {
     cfg.youtube_music.default_playlist = pick<std::string>(ym, "default_playlist", "");
     cfg.youtube_music.shuffle          = pick<bool>(ym, "shuffle", cfg.youtube_music.shuffle);
 
+    const auto& am                     = section(root, "apple_music");
+    cfg.apple_music.enabled            = pick<bool>(am, "enabled", cfg.apple_music.enabled);
+    cfg.apple_music.developer_token    = pick<std::string>(am, "developer_token", cfg.apple_music.developer_token);
+    cfg.apple_music.storefront         = pick<std::string>(am, "storefront", cfg.apple_music.storefront);
+    cfg.apple_music.playback_mode      = pick<std::string>(am, "playback_mode", cfg.apple_music.playback_mode);
+
     const auto& au = section(root, "audio");
     cfg.audio.output_gain =
         static_cast<float>(pick<double>(au, "output_gain", cfg.audio.output_gain));

@@ -5,6 +5,7 @@
 #include "fh6/log.hpp"
 #include "fh6/sources/local_file_source.hpp"
 #include "fh6/sources/youtube_music_source.hpp"
+#include "fh6/sources/apple_music_source.hpp"
 
 #include <nlohmann/json.hpp>
 
@@ -125,6 +126,13 @@ json config_to_json(const Config& c) {
              {"default_playlist", c.youtube_music.default_playlist},
              {"shuffle", c.youtube_music.shuffle},
          }},
+        {"apple_music", 
+         json{
+            {"enabled", c.apple_music.enabled},
+            {"developer_token", c.apple_music.developer_token},
+            {"storefront", c.apple_music.storefront},
+            {"playback_mode", c.apple_music.playback_mode},
+         }},
         {"audio",
          json{
              {"output_gain", c.audio.output_gain},
@@ -176,6 +184,12 @@ void apply_patch(Config& c, const json& j) {
         c.youtube_music.default_playlist =
             pull(*it, "default_playlist", c.youtube_music.default_playlist);
         c.youtube_music.shuffle = pull(*it, "shuffle", c.youtube_music.shuffle);
+    }
+    if (auto it = j.find("apple_music"); it != j.end()) {
+        c.apple_music.enabled = pull(*it, "enabled", c.apple_music.enabled);
+        c.apple_music.developer_token = pull(*it, "developer_token", c.apple_music.developer_token);
+        c.apple_music.storefront = pull(*it, "storefront", c.apple_music.storefront);
+        c.apple_music.playback_mode = pull(*it, "playback_mode", c.apple_music.playback_mode);
     }
     if (auto it = j.find("audio"); it != j.end()) {
         c.audio.output_gain = pull(*it, "output_gain", c.audio.output_gain);
@@ -434,12 +448,13 @@ struct HttpServer::Impl {
         Request req;
         if (!read_request(client, req)) return;
 
-        auto ok = [&](const json& j = json::object()) {
+        auto ok = [&](json j = json{}) {
             std::string body = j.empty()
-                                   ? std::string{R"({"ok":true})"}
-                                   : j.dump(-1, ' ', false, json::error_handler_t::replace);
+                                ? std::string{R"({"ok":true})"}
+                                : j.dump(-1, ' ', false, json::error_handler_t::replace);
             send_response(client, 200, body);
         };
+
         auto fail = [&](int code, std::string_view msg) {
             send_response(client, code, json{{"error", std::string{msg}}}.dump());
         };
@@ -516,6 +531,43 @@ struct HttpServer::Impl {
                 lf->set_directory(snap.local_files.music_dir, snap.local_files.recursive);
             }
             return ok(json{{"track_count", lf->playlist_snapshot().size()}});
+        }
+        if (m == "POST" && p == "/api/source/apple_music/now-playing") {
+            auto* am = find_typed<sources::AppleMusicSource>("apple_music");
+
+            if (!am) {
+                return fail(404, "apple_music not registered");
+            }
+
+            auto j = json::parse(req.body);
+
+            TrackInfo info{};
+            info.title = pull(j, "title", std::string{});
+            info.artist = pull(j, "artist", std::string{});
+            info.album = pull(j, "album", std::string{});
+            info.artwork_url = pull(j, "artwork_url", std::string{});
+            info.duration_ms = pull<uint64_t>(j, "duration_ms", 0);
+            info.position_ms = pull<uint64_t>(j, "position_ms", 0);
+
+            auto state_text = pull(j, "playback_state", std::string{"playing"});
+
+            PlaybackState state = PlaybackState::playing;
+
+            if (state_text == "paused") {
+                state = PlaybackState::paused;
+            } else if (state_text == "stopped") {
+                state = PlaybackState::stopped;
+            } else if (state_text == "buffering") {
+                state = PlaybackState::buffering;
+            }
+
+            am->update_now_playing(std::move(info), state);
+
+            if (j.contains("authenticated")) {
+                am->set_authenticated(j.at("authenticated").get<bool>());
+            }
+
+            return ok();
         }
         if (m == "POST" && p == "/api/options") {
             auto j = json::parse(req.body);

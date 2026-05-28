@@ -27,6 +27,21 @@ ffmpeg_path        = ''                # blank = `ffmpeg`  on PATH
 default_playlist   = ""
 shuffle            = true
 
+[apple_music]
+enabled = false
+
+# MusicKit developer token.
+# Do not commit your real token.
+developer_token = ""
+
+# Apple Music storefront.
+# Canada = "ca", United States = "us".
+storefront = "ca"
+
+# v1 uses browser playback through MusicKit JS.
+# The C++ source receives metadata only.
+playback_mode = "browser"
+
 [audio]
 output_gain = 1.0
 
