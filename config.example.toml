@@ -28,8 +28,7 @@ default_playlist   = ""
 shuffle            = true
 
 [apple_music]
-enabled = false
-
+enabled = true
 # MusicKit developer token.
 # Do not commit your real token.
 developer_token = ""
