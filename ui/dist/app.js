@@ -138,6 +138,12 @@ const SCHEMA = [
     ["default_playlist", "Default playlist URL",   "text"],
     ["shuffle",          "Shuffle",                "checkbox"],
   ]],
+  ["apple_music", "Apple Music", [
+    ["enabled", "Enabled", "checkbox"],
+    ["developer_token", "MusicKit developer token", "password"],
+    ["storefront", "Storefront", "text"],
+    ["playback_mode", "Playback mode", "text"],
+  ]],
   ["audio", "Audio", [
     ["output_gain", "Output gain", "number", 0, 1, 0.01],
   ]],
@@ -178,13 +184,15 @@ function field(section, [key, label, type, a, b, c]) {
       </div>`).join("");
     return `<div class="field bands"><label>${label}</label>${rows}</div>`;
   }
-  const attrs = type === "number"
-    ? ` min="${a ?? ''}" max="${b ?? ''}" step="${c ?? 1}"`
-    : "";
-  return `<div class="field">
-    <label for="${id}">${label}</label>
-    <input id="${id}" type="${type}" data-section="${section}" data-key="${key}"${attrs} value="${cur ?? ''}">
-  </div>`;
+  const inputType = type === "password" ? "password" : type;
+  const attrs = type === "number" ? ` min="${a ?? ''}" max="${b ?? ''}" step="${c ?? 1}"` : "";
+
+  return `
+    <label class="field">
+      <span>${label}</span>
+      <input id="${id}" data-section="${section}" data-key="${key}" type="${inputType}" value="${cur ?? ""}"${attrs}>
+    </label>
+  `;
 }
 
 function renderSettings() {

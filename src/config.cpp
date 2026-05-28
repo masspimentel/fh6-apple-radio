@@ -225,6 +225,12 @@ void save_config(const std::filesystem::path& path, const Config& cfg) {
     e.kv("default_playlist", cfg.youtube_music.default_playlist);
     e.kv("shuffle", cfg.youtube_music.shuffle);
 
+    e.header("apple_music");
+    e.kv("enabled", cfg.apple_music.enabled);
+    e.kv("developer_token", cfg.apple_music.developer_token);
+    e.kv("storefront", cfg.apple_music.storefront);
+    e.kv("playback_mode", cfg.apple_music.playback_mode);
+
     e.header("audio");
     e.kv("output_gain", (double)cfg.audio.output_gain);
 
