@@ -84,6 +84,11 @@ Config load_config(const std::filesystem::path& path) {
     cfg.apple_music.storefront         = pick<std::string>(am, "storefront", cfg.apple_music.storefront);
     cfg.apple_music.playback_mode      = pick<std::string>(am, "playback_mode", cfg.apple_music.playback_mode);
 
+    const auto& ec = section(root, "external_capture");
+    cfg.external_capture.enabled = pick(ec, "enabled", cfg.external_capture.enabled);
+    cfg.external_capture.device = pick(ec, "device", cfg.external_capture.device);
+    cfg.external_capture.gain = static_cast<float>(pick(ec, "gain", (double)cfg.external_capture.gain));
+
     const auto& au = section(root, "audio");
     cfg.audio.output_gain =
         static_cast<float>(pick<double>(au, "output_gain", cfg.audio.output_gain));
@@ -230,6 +235,11 @@ void save_config(const std::filesystem::path& path, const Config& cfg) {
     e.kv("developer_token", cfg.apple_music.developer_token);
     e.kv("storefront", cfg.apple_music.storefront);
     e.kv("playback_mode", cfg.apple_music.playback_mode);
+
+    e.header("external_capture");
+    e.kv("enabled", cfg.external_capture.enabled);
+    e.kv("device", cfg.external_capture.device);
+    e.kv("gain", (double)cfg.external_capture.gain);
 
     e.header("audio");
     e.kv("output_gain", (double)cfg.audio.output_gain);

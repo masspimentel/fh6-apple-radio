@@ -12,6 +12,7 @@
 #include "fh6/sources/local_file_source.hpp"
 #include "fh6/sources/youtube_music_source.hpp"
 #include "fh6/sources/apple_music_source.hpp"
+#include "fh6/sources/external_capture_source.hpp"
 
 #include <windows.h>
 #include <array>
@@ -126,6 +127,14 @@ void run_bridge(HMODULE self) noexcept {
                 }
         } else if (!c.apple_music.enabled && mgr.find("apple_music")) {
             mgr.unregister_source("apple_music");
+        }
+        if (c.external_capture.enabled && !mgr.find("external_capture")) {
+            auto src = std::make_unique<sources::ExternalCaptureSource>(c.external_capture);
+            if (src->initialize()) {
+                mgr.register_source(std::move(src));
+            }
+        } else if (!c.external_capture.enabled && mgr.find("external_capture")) {
+            mgr.unregister_source("external_capture");
         }
     };
 

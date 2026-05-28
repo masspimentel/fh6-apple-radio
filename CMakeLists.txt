@@ -40,6 +40,7 @@ add_library(version SHARED
     src/sources/local_file_source.cpp
     src/sources/youtube_music_source.cpp
     src/sources/apple_music_source.cpp
+    src/sources/external_capture_source.cpp
 )
 
 target_include_directories(version PRIVATE
@@ -49,7 +50,7 @@ target_include_directories(version PRIVATE
     third_party/miniaudio
 )
 
-target_link_libraries(version PRIVATE ws2_32 bcrypt psapi)
+target_link_libraries(version PRIVATE ws2_32 bcrypt psapi ole32 uuid)
 
 set_target_properties(version PROPERTIES
     OUTPUT_NAME version

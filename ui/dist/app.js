@@ -148,6 +148,11 @@ const SCHEMA = [
     ["storefront", "Storefront", "text"],
     ["playback_mode", "Playback mode", "text"],
   ]],
+  ["external_capture", "External Capture", [
+    ["enabled", "Enabled", "checkbox"],
+    ["device", "Device", "text"],
+    ["gain", "Gain", "number", 0, 4, 0.01],
+  ]],
   ["audio", "Audio", [
     ["output_gain", "Output gain", "number", 0, 1, 0.01],
   ]],
@@ -557,7 +562,8 @@ function renderAppleMusicCard() {
 async function playAppleMusicItem(item, kind) {
   const music = await ensureAppleMusicConfig();
 
-  await api.send("/api/source/switch", { source: "apple_music" });
+  await api.send("/api/source/switch", { source: "external_capture" });
+  await api.send("/api/source/external_capture/play");
 
   if (kind === "catalog-song") {
     await music.setQueue({ song: item.id });

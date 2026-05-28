@@ -133,6 +133,11 @@ json config_to_json(const Config& c) {
             {"storefront", c.apple_music.storefront},
             {"playback_mode", c.apple_music.playback_mode},
          }},
+        {"external_capture", json{
+            {"enabled", c.external_capture.enabled},
+            {"device", c.external_capture.device},
+            {"gain", c.external_capture.gain},
+        }},
         {"audio",
          json{
              {"output_gain", c.audio.output_gain},
@@ -190,6 +195,11 @@ void apply_patch(Config& c, const json& j) {
         c.apple_music.developer_token = pull(*it, "developer_token", c.apple_music.developer_token);
         c.apple_music.storefront = pull(*it, "storefront", c.apple_music.storefront);
         c.apple_music.playback_mode = pull(*it, "playback_mode", c.apple_music.playback_mode);
+    }
+    if (auto it = j.find("external_capture"); it != j.end()) {
+        c.external_capture.enabled = pull(*it, "enabled", c.external_capture.enabled);
+        c.external_capture.device = pull(*it, "device", c.external_capture.device);
+        c.external_capture.gain = pull(*it, "gain", c.external_capture.gain);
     }
     if (auto it = j.find("audio"); it != j.end()) {
         c.audio.output_gain = pull(*it, "output_gain", c.audio.output_gain);

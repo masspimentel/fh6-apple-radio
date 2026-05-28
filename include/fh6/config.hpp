@@ -51,6 +51,12 @@ struct AppleMusicConfig {
     std::string playback_mode = "browser";
 };
 
+struct ExternalCaptureConfig {
+    bool enabled = false;
+    std::string device = "default";
+    float gain = 1.0f;
+};
+
 struct Config {
     GeneralConfig general;
     LocalFilesConfig local_files;
@@ -58,6 +64,7 @@ struct Config {
     AudioConfig audio;
     PlaybackConfig playback;
     AppleMusicConfig apple_music;
+    ExternalCaptureConfig external_capture;
 };
 
 // Missing file is fine, defaults are returned.
