@@ -21,6 +21,10 @@ const api = {
 let state = null;
 let cfg   = null;
 
+let appleMusic = null;
+let appleMusicConfigured = false;
+let appleMusicSyncTimer = null;
+
 const fmt = ms => {
   if (!ms || ms < 0) return "0:00";
   const s = Math.floor(ms / 1000);
@@ -249,6 +253,188 @@ async function transport(action) {
   catch (e) { toast(e.message, true); }
 }
 
+async function ensureAppleMusicConfig() {
+  if (!cfg) {
+    cfg = await api.get("/api/config");
+  }
+
+  const am = cfg?.apple_music;
+
+  if (!am?.enabled) {
+    throw new Error("Apple Music is disabled in settings.");
+  }
+
+  if (!am?.developer_token) {
+    throw new Error("Apple Music developer token is missing.");
+  }
+
+  if (!window.MusicKit) {
+    throw new Error("MusicKit JS did not load.");
+  }
+
+  if (!appleMusicConfigured) {
+    await MusicKit.configure({
+      developerToken: am.developer_token,
+      app: {
+        name: "FH6 Apple Radio",
+        build: "1.0.0"
+      }
+    });
+
+    appleMusic = MusicKit.getInstance();
+    appleMusicConfigured = true;
+  }
+
+  return appleMusic;
+}
+
+async function authorizeAppleMusic() {
+  const music = await ensureAppleMusicConfig();
+  await music.authorize();
+
+  await api.send("/api/source/apple_music/now-playing", {
+    title: "",
+    artist: "",
+    album: "",
+    playback_state: "stopped",
+    authenticated: true
+  });
+
+  toast("Apple Music authorized");
+  startAppleMusicSync();
+}
+
+async function unauthorizeAppleMusic() {
+  const music = await ensureAppleMusicConfig();
+  await music.unauthorize();
+
+  await api.send("/api/source/apple_music/now-playing", {
+    title: "",
+    artist: "",
+    album: "",
+    playback_state: "stopped",
+    authenticated: false
+  });
+
+  toast("Apple Music signed out");
+}
+
+function appleArtworkUrl(artwork, size = 300) {
+  if (!artwork?.url) return "";
+  return artwork.url
+    .replace("{w}", String(size))
+    .replace("{h}", String(size));
+}
+
+function appleSongToTrack(song) {
+  const attrs = song?.attributes || {};
+
+  return {
+    title: attrs.name || "",
+    artist: attrs.artistName || "",
+    album: attrs.albumName || "",
+    artwork_url: appleArtworkUrl(attrs.artwork),
+    duration_ms: attrs.durationInMillis || 0,
+    position_ms: 0,
+    playback_state: "playing",
+    authenticated: true
+  };
+}
+
+async function syncAppleNowPlaying() {
+  if (!appleMusic) return;
+
+  const item = appleMusic.nowPlayingItem;
+  const attrs = item?.attributes || {};
+
+  const payload = {
+    title: attrs.name || "",
+    artist: attrs.artistName || "",
+    album: attrs.albumName || "",
+    artwork_url: appleArtworkUrl(attrs.artwork),
+    duration_ms: attrs.durationInMillis || 0,
+    position_ms: Math.floor((appleMusic.currentPlaybackTime || 0) * 1000),
+    playback_state: appleMusic.isPlaying ? "playing" : "paused",
+    authenticated: true
+  };
+
+  await api.send("/api/source/apple_music/now-playing", payload);
+}
+
+function startAppleMusicSync() {
+  if (appleMusicSyncTimer) return;
+
+  appleMusicSyncTimer = setInterval(() => {
+    syncAppleNowPlaying().catch(() => {});
+  }, 1000);
+}
+
+async function searchAppleMusic(query) {
+  const music = await ensureAppleMusicConfig();
+
+  const results = await music.api.search(query, {
+    types: "songs",
+    limit: 10
+  });
+
+  return results?.songs?.data || [];
+}
+
+function renderAppleMusicResults(songs) {
+  const wrap = $("#am-results");
+  if (!wrap) return;
+
+  wrap.innerHTML = "";
+
+  if (!songs.length) {
+    wrap.innerHTML = `<p class="muted">No results found.</p>`;
+    return;
+  }
+
+  for (const song of songs) {
+    const attrs = song.attributes || {};
+    const row = document.createElement("button");
+
+    row.type = "button";
+    row.className = "source";
+    row.innerHTML = `
+      <strong>${attrs.name || "Unknown title"}</strong>
+      <small>${attrs.artistName || ""}${attrs.albumName ? " - " + attrs.albumName : ""}</small>
+    `;
+
+    row.addEventListener("click", async () => {
+      try {
+        const music = await ensureAppleMusicConfig();
+
+        await api.send("/api/source/switch", { source: "apple_music" });
+
+        await music.setQueue({
+          song: song.id
+        });
+
+        await music.play();
+
+        await api.send("/api/source/apple_music/now-playing", appleSongToTrack(song));
+
+        startAppleMusicSync();
+        toast("Playing Apple Music");
+      } catch (e) {
+        toast(e.message, true);
+      }
+    });
+
+    wrap.appendChild(row);
+  }
+}
+
+function renderAppleMusicCard() {
+  const card = $("#apple-card");
+  if (!card) return;
+
+  const available = state?.sources?.available || [];
+  card.hidden = !available.some(s => s.name === "apple_music");
+}
+
 function wire() {
   $("#t-play").onclick = () => transport("play");
   $("#t-next").onclick = () => transport("next");
@@ -285,6 +471,45 @@ function wire() {
       toast(shuffle ? "Shuffle on" : "Shuffle off");
     } catch (err) { toast(err.message, true); }
   });
+
+  const amAuth = $("#am-auth");
+  if (amAuth) {
+    amAuth.addEventListener("click", async () => {
+      try {
+        await authorizeAppleMusic();
+      } catch (e) {
+        toast(e.message, true);
+      }
+    });
+  }
+
+  const amUnauth = $("#am-unauth");
+  if (amUnauth) {
+    amUnauth.addEventListener("click", async () => {
+      try {
+        await unauthorizeAppleMusic();
+      } catch (e) {
+        toast(e.message, true);
+      }
+    });
+  }
+
+  const amSearch = $("#am-search");
+  if (amSearch) {
+    amSearch.addEventListener("submit", async e => {
+      e.preventDefault();
+
+      const query = $("#am-query").value.trim();
+      if (!query) return;
+
+      try {
+        const songs = await searchAppleMusic(query);
+        renderAppleMusicResults(songs);
+      } catch (err) {
+        toast(err.message, true);
+      }
+    });
+  }
 
   $("#open-settings").onclick  = async () => { cfg = await api.get("/api/config"); renderSettings(); openDrawer(); };
   $("#close-settings").onclick = closeDrawer;
@@ -323,12 +548,34 @@ function render() {
   renderNowPlaying();
   renderSources();
   renderOutput();
+  renderAppleMusicCard();
 
   const yt = state?.sources?.available?.find(s => s.name === "youtube_music");
   const shuffleBtn = $("#yt-shuffle");
   if (shuffleBtn) {
     shuffleBtn.classList.toggle("active", !!yt?.details?.shuffle);
   }
+}
+
+async function initAppleMusic() {
+  const cfg = state.config?.apple_music;
+
+  if (!cfg?.enabled || !cfg?.developer_token) {
+    throw new Error("Apple Music is not configured.");
+  }
+
+  await MusicKit.configure({
+    developerToken: cfg.developer_token,
+    app: {
+      name: "FH6 Apple Radio",
+      build: "1.0.0"
+    }
+  });
+
+  const music = MusicKit.getInstance();
+  await music.authorize();
+
+  return music;
 }
 
 wire();

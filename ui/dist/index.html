@@ -55,6 +55,26 @@
     </form>
   </section>
 
+  <section id="apple-card" class="card" hidden>
+    <h2>Apple Music</h2>
+
+    <p class="muted">
+      Sign in with Apple Music, search the catalog, and play through MusicKit in the dashboard.
+    </p>
+
+    <div class="row">
+      <button id="am-auth" type="button">Authorize Apple Music</button>
+      <button id="am-unauth" type="button">Sign out</button>
+    </div>
+
+    <form id="am-search">
+      <input id="am-query" type="text" placeholder="Search Apple Music..." autocomplete="off">
+      <button type="submit">Search</button>
+    </form>
+
+    <div id="am-results" class="results"></div>
+  </section>
+
   <section class="card">
     <h2>Output</h2>
     <label class="slider">
@@ -101,6 +121,7 @@
 </aside>
 <div class="scrim" id="scrim" hidden></div>
 
+<script src="https://js-cdn.music.apple.com/musickit/v3/musickit.js"></script>
 <script src="app.js" type="module"></script>
 </body>
 </html>
