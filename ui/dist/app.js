@@ -369,55 +369,165 @@ function startAppleMusicSync() {
   }, 1000);
 }
 
-async function searchAppleMusic(query) {
+async function appleMusicApi(path, params = {}, needsUserToken = false) {
   const music = await ensureAppleMusicConfig();
+  const am = cfg?.apple_music;
 
-  const results = await music.api.search(query, {
-    types: "songs",
-    limit: 10
+  const url = new URL(`https://api.music.apple.com${path}`);
+
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null && value !== "") {
+      url.searchParams.set(key, String(value));
+    }
+  }
+
+  const headers = {
+    Authorization: `Bearer ${am.developer_token}`
+  };
+
+  if (needsUserToken) {
+    const userToken = music.musicUserToken;
+
+    if (!userToken) {
+      throw new Error("Apple Music is not authorized. Click Authorize Apple Music first.");
+    }
+
+    headers["Music-User-Token"] = userToken;
+  }
+
+  const res = await fetch(url.toString(), {
+    method: "GET",
+    headers
   });
 
-  return results?.songs?.data || [];
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Apple Music API error ${res.status}: ${body}`);
+  }
+
+  return await res.json();
 }
 
-function renderAppleMusicResults(songs) {
+async function searchAppleMusicCatalog(query) {
+  const am = cfg?.apple_music;
+  const storefront = am?.storefront || "ca";
+
+  const results = await appleMusicApi(
+    `/v1/catalog/${storefront}/search`,
+    {
+      term: query,
+      types: "songs,albums,playlists",
+      limit: 10
+    },
+    false
+  );
+
+  return {
+    songs: results?.results?.songs?.data || [],
+    albums: results?.results?.albums?.data || [],
+    playlists: results?.results?.playlists?.data || []
+  };
+}
+
+async function searchAppleMusicLibrary(query) {
+  const results = await appleMusicApi(
+    "/v1/me/library/search",
+    {
+      term: query,
+      types: "library-songs,library-albums,library-playlists",
+      limit: 10
+    },
+    true
+  );
+
+  return {
+    songs: results?.results?.["library-songs"]?.data || [],
+    albums: results?.results?.["library-albums"]?.data || [],
+    playlists: results?.results?.["library-playlists"]?.data || []
+  };
+}
+
+async function getAppleMusicLibraryPlaylists() {
+  const results = await appleMusicApi(
+    "/v1/me/library/playlists",
+    {
+      limit: 25
+    },
+    true
+  );
+
+  return results?.data || [];
+}
+
+async function getAppleMusicLibraryPlaylistTracks(playlistId) {
+  const results = await appleMusicApi(
+    `/v1/me/library/playlists/${encodeURIComponent(playlistId)}/tracks`,
+    {
+      limit: 50
+    },
+    true
+  );
+
+  return results?.data || [];
+}
+
+function renderAppleMusicResults(results) {
   const wrap = $("#am-results");
   if (!wrap) return;
 
+  const catalog = results?.catalog || {};
+  const library = results?.library || {};
+
   wrap.innerHTML = "";
 
-  if (!songs.length) {
+  const hasResults =
+    (catalog.songs || []).length ||
+    (catalog.albums || []).length ||
+    (catalog.playlists || []).length ||
+    (library.songs || []).length ||
+    (library.albums || []).length ||
+    (library.playlists || []).length;
+
+  if (!hasResults) {
     wrap.innerHTML = `<p class="muted">No results found.</p>`;
     return;
   }
 
-  for (const song of songs) {
-    const attrs = song.attributes || {};
+  appendAppleSection(wrap, "Catalog Songs", catalog.songs || [], "catalog-song");
+  appendAppleSection(wrap, "Catalog Albums", catalog.albums || [], "catalog-album");
+  appendAppleSection(wrap, "Catalog Playlists", catalog.playlists || [], "catalog-playlist");
+
+  appendAppleSection(wrap, "Library Songs", library.songs || [], "library-song");
+  appendAppleSection(wrap, "Library Albums", library.albums || [], "library-album");
+  appendAppleSection(wrap, "Library Playlists", library.playlists || [], "library-playlist");
+}
+
+function appendAppleSection(wrap, title, items, kind) {
+  if (!items.length) return;
+
+  const heading = document.createElement("h3");
+  heading.textContent = title;
+  wrap.appendChild(heading);
+
+  for (const item of items) {
+    const attrs = item.attributes || {};
     const row = document.createElement("button");
 
     row.type = "button";
     row.className = "source";
+
+    const name = attrs.name || attrs.title || "Unknown";
+    const artist = attrs.artistName || attrs.curatorName || "";
+    const album = attrs.albumName || "";
+
     row.innerHTML = `
-      <strong>${attrs.name || "Unknown title"}</strong>
-      <small>${attrs.artistName || ""}${attrs.albumName ? " - " + attrs.albumName : ""}</small>
+      <strong>${escapeHtml(name)}</strong>
+      <small>${escapeHtml([artist, album].filter(Boolean).join(" - "))}</small>
     `;
 
     row.addEventListener("click", async () => {
       try {
-        const music = await ensureAppleMusicConfig();
-
-        await api.send("/api/source/switch", { source: "apple_music" });
-
-        await music.setQueue({
-          song: song.id
-        });
-
-        await music.play();
-
-        await api.send("/api/source/apple_music/now-playing", appleSongToTrack(song));
-
-        startAppleMusicSync();
-        toast("Playing Apple Music");
+        await playAppleMusicItem(item, kind);
       } catch (e) {
         toast(e.message, true);
       }
@@ -427,12 +537,71 @@ function renderAppleMusicResults(songs) {
   }
 }
 
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
 function renderAppleMusicCard() {
   const card = $("#apple-card");
   if (!card) return;
 
   const available = state?.sources?.available || [];
   card.hidden = !available.some(s => s.name === "apple_music");
+}
+
+async function playAppleMusicItem(item, kind) {
+  const music = await ensureAppleMusicConfig();
+
+  await api.send("/api/source/switch", { source: "apple_music" });
+
+  if (kind === "catalog-song") {
+    await music.setQueue({ song: item.id });
+  } else if (kind === "catalog-album") {
+    await music.setQueue({ album: item.id });
+  } else if (kind === "catalog-playlist") {
+    await music.setQueue({ playlist: item.id });
+  } else if (kind === "library-song") {
+    await music.setQueue({ items: [item] });
+  } else if (kind === "library-album") {
+    await music.setQueue({ items: [item] });
+  } else if (kind === "library-playlist") {
+    const tracks = await getAppleMusicLibraryPlaylistTracks(item.id);
+
+    if (!tracks.length) {
+      throw new Error("This library playlist has no playable tracks.");
+    }
+
+    await music.setQueue({ items: tracks });
+  } else {
+    throw new Error(`Unsupported Apple Music item type: ${kind}`);
+  }
+
+  await music.play();
+
+  await api.send("/api/source/apple_music/now-playing", appleItemToTrack(item));
+  startAppleMusicSync();
+
+  toast("Playing Apple Music");
+}
+
+function appleItemToTrack(item) {
+  const attrs = item?.attributes || {};
+
+  return {
+    title: attrs.name || attrs.title || "",
+    artist: attrs.artistName || attrs.curatorName || "",
+    album: attrs.albumName || "",
+    artwork_url: appleArtworkUrl(attrs.artwork),
+    duration_ms: attrs.durationInMillis || 0,
+    position_ms: 0,
+    playback_state: "playing",
+    authenticated: true
+  };
 }
 
 function wire() {
@@ -503,8 +672,33 @@ function wire() {
       if (!query) return;
 
       try {
-        const songs = await searchAppleMusic(query);
-        renderAppleMusicResults(songs);
+        const catalog = await searchAppleMusicCatalog(query);
+        const library = await searchAppleMusicLibrary(query);
+
+        renderAppleMusicResults({
+          catalog,
+          library
+        });
+      } catch (err) {
+        toast(err.message, true);
+      }
+    });
+  }
+
+  const amLoadPlaylists = $("#am-load-playlists");
+  if (amLoadPlaylists) {
+    amLoadPlaylists.addEventListener("click", async () => {
+      try {
+        const playlists = await getAppleMusicLibraryPlaylists();
+
+        renderAppleMusicResults({
+          catalog: {},
+          library: {
+            songs: [],
+            albums: [],
+            playlists
+          }
+        });
       } catch (err) {
         toast(err.message, true);
       }
