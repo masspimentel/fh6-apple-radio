@@ -7,13 +7,23 @@
 #endif
 
 #include <windows.h>
+#include <mmreg.h>
 #include <mmdeviceapi.h>
 #include <audioclient.h>
+#include <ksmedia.h>
 #include <functiondiscoverykeys_devpkey.h>
 
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+
+WAVEFORMATEX* mix_format_as_wave(void* p) {
+    return reinterpret_cast<WAVEFORMATEX*>(p);
+}
+
+const WAVEFORMATEX* mix_format_as_wave(const void* p) {
+    return reinterpret_cast<const WAVEFORMATEX*>(p);
+}
 
 namespace fh6::sources {
 namespace {
@@ -220,8 +230,9 @@ bool ExternalCaptureSource::start_capture_locked() {
         return false;
     }
 
-    hr = audio_client_->GetMixFormat(&mix_format_);
-
+    WAVEFORMATEX* wf = nullptr;
+    hr = audio_client_->GetMixFormat(&wf);
+    mix_format_ = wf;
     if (FAILED(hr) || !mix_format_) {
         log::warn("[external_capture] GetMixFormat failed: 0x{:08X}", static_cast<unsigned>(hr));
         release_capture_locked();
@@ -235,7 +246,7 @@ bool ExternalCaptureSource::start_capture_locked() {
         AUDCLNT_STREAMFLAGS_LOOPBACK,
         buffer_duration,
         0,
-        mix_format_,
+        mix_format_as_wave(mix_format_),
         nullptr
     );
 
@@ -268,10 +279,10 @@ bool ExternalCaptureSource::start_capture_locked() {
 
     log::info(
         "[external_capture] started loopback: {} Hz, {} channels, {} bits, tag=0x{:04X}",
-        mix_format_->nSamplesPerSec,
-        mix_format_->nChannels,
-        mix_format_->wBitsPerSample,
-        mix_format_->wFormatTag
+        mix_format_as_wave(mix_format_)->nSamplesPerSec,
+        mix_format_as_wave(mix_format_)->nChannels,
+        mix_format_as_wave(mix_format_)->wBitsPerSample,
+        mix_format_as_wave(mix_format_)->wFormatTag
     );
 
     return true;
@@ -297,27 +308,28 @@ void ExternalCaptureSource::release_capture_locked() noexcept {
 }
 
 std::size_t ExternalCaptureSource::convert_packet_to_s16(
-    const BYTE* data,
+    const unsigned char* data,
     std::uint32_t frames,
     std::vector<std::int16_t>& out
 ) {
+    const WAVEFORMATEX* wf = mix_format_as_wave(mix_format_);
     out.clear();
 
     if (!mix_format_ || !data || frames == 0) {
         return 0;
     }
 
-    const auto in_rate = mix_format_->nSamplesPerSec;
-    const auto in_channels = mix_format_->nChannels;
-    const auto bits = mix_format_->wBitsPerSample;
-    const auto block_align = mix_format_->nBlockAlign;
+    const auto in_rate = wf->nSamplesPerSec;
+    const auto in_channels = wf->nChannels;
+    const auto bits = wf->wBitsPerSample;
+    const auto block_align = wf->nBlockAlign;
 
     if (in_rate == 0 || in_channels == 0 || block_align == 0) {
         return 0;
     }
 
-    const bool as_float = is_float_format(mix_format_);
-    const bool as_pcm = is_pcm_format(mix_format_);
+    const bool as_float = is_float_format(wf);
+    const bool as_pcm = is_pcm_format(wf);
 
     if (!as_float && !as_pcm) {
         return 0;

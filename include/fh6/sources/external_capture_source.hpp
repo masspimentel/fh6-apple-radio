@@ -9,12 +9,10 @@
 #include <mutex>
 #include <string>
 #include <vector>
-#include <windows.h>
 
 struct IAudioClient;
 struct IAudioCaptureClient;
 struct IMMDevice;
-struct WAVEFORMATEX;
 
 namespace fh6::sources {
 
@@ -61,7 +59,7 @@ private:
     void release_capture_locked() noexcept;
 
     std::size_t convert_packet_to_s16(
-        const BYTE* data,
+        const unsigned char* data,
         std::uint32_t frames,
         std::vector<std::int16_t>& out
     );
@@ -73,7 +71,7 @@ private:
     IAudioClient* audio_client_ = nullptr;
     IAudioCaptureClient* capture_client_ = nullptr;
     IMMDevice* device_ = nullptr;
-    WAVEFORMATEX* mix_format_ = nullptr;
+    void* mix_format_ = nullptr;
 
     std::atomic<PlaybackState> state_{PlaybackState::stopped};
     std::atomic<AuthState> auth_{AuthState::none_required};
