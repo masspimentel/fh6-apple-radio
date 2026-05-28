@@ -41,6 +41,11 @@ storefront = "ca"
 # The C++ source receives metadata only.
 playback_mode = "browser"
 
+[external_capture]
+enabled = true
+device = "default"
+gain = 1.0
+
 [audio]
 output_gain = 1.0
 
