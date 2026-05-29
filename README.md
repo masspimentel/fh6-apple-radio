@@ -6,7 +6,7 @@
 
 <p align="center"><img src="assets/banner.png" alt="FH6 Universal Radio" /></p>
 
-An open-source radio mod for **Forza Horizon 6**. Adds a new in-game radio station fed from your **local music** or **YouTube Music**, controlled from a browser dashboard.
+An open-source radio mod for **Forza Horizon 6**. Adds a new in-game radio station fed from local music, **YouTube Music**, and experimental **Apple Music** helper playback, controlled from a browser dashboard and helper player.
 
 <p align="center">
   <img src="assets/ingame.png" alt="In-game radio station" width="49%" />
@@ -23,6 +23,7 @@ An open-source radio mod for **Forza Horizon 6**. Adds a new in-game radio stati
 - **Quick station skip**: tune the radio knob away and back within 1s to skip the current track.
 - **Loudness normalization**: For consistent volume across tracks.
 - **5-band equalizer**: 60 Hz / 250 Hz / 1 kHz / 4 kHz / 12 kHz peaking biquads, ±6 dB per band, applied producer-side at 48 kHz before audio hits the game.
+- **Apple Music helper: experimental MusicKit/WebView2 player that captures Apple Music playback and streams 48 kHz stereo PCM into the in-game FMOD radio path through a named pipe.**
 
 ## Install
 
@@ -41,6 +42,141 @@ YouTube playback requires three external tools on disk:
 - [`deno`](https://deno.com/) on `PATH`. Install with `winget install DenoLand.Deno` (or `irm https://deno.land/install.ps1 | iex`).
 
 Private/age-restricted content also needs a Netscape `cookies.txt` exported from your browser.
+
+### Apple Music Helper
+
+Apple Music support is experimental and uses a separate helper application instead of directly decoding Apple Music streams.
+
+Apple Music / MusicKit does not expose a raw audio stream that the mod can decode directly. To route Apple Music into FH6's FMOD radio path, this branch uses a helper process that hosts MusicKit inside WebView2, captures the helper process audio, and streams raw PCM into the mod through a named pipe.
+
+```text
+Apple Music Helper WebView2 player
+    -> Windows process-loopback capture
+    -> named pipe PCM stream
+    -> version.dll AppleMusicSource
+    -> FH6 / FMOD radio bus
+```
+
+#### Requirements
+
+Apple Music helper playback requires:
+
+- An active Apple Music subscription.
+- Apple Developer Program access.
+- A MusicKit developer token.
+- Microsoft Edge WebView2 Runtime.
+- Microsoft WebView2 SDK package for source builds.
+- Windows 10 build 20348 or newer, or Windows 11, for process-specific loopback capture.
+- A virtual audio cable if you do not want to hear helper playback directly.
+
+Do not commit your `.p8` private key, generated developer token / JWT, `Keys.txt`, or local `config.toml`.
+
+#### Apple Music Configuration
+
+Add or verify the following section in your runtime config:
+
+```toml
+[apple_music]
+enabled = true
+developer_token = ""
+storefront = "ca"
+playback_mode = "helper"
+```
+
+The developer token can also be pasted into the Apple Music Helper UI. The helper stores the token locally in WebView2 local storage so it does not need to be entered every time.
+
+#### WebView2 SDK Setup
+
+The repository does not commit the WebView2 NuGet package. Install it locally before building:
+
+```powershell
+Invoke-WebRequest `
+  -Uri "https://dist.nuget.org/win-x86-commandline/latest/nuget.exe" `
+  -OutFile ".\nuget.exe"
+
+.\nuget.exe install Microsoft.Web.WebView2 -OutputDirectory .\external
+```
+
+If CMake cannot find WebView2, configure `WEBVIEW2_ROOT` manually:
+
+```powershell
+cmake -S . -B build -DWEBVIEW2_ROOT="C:\path\to\Microsoft.Web.WebView2.x.y.z"
+```
+
+Example folder layout:
+
+```text
+external/
+└── Microsoft.Web.WebView2.1.0.xxxxx.xx/
+    └── build/
+        └── native/
+            ├── include/
+            └── x64/
+```
+
+#### Running the Apple Music Helper
+
+Until the helper has an embedded static HTTP server, start a local HTTP server for the helper UI:
+
+```powershell
+cd tools\apple_helper\web
+py -m http.server 8421 --bind 127.0.0.1
+```
+
+Then start the helper:
+
+```powershell
+.\build\Release\fh6_apple_helper.exe
+```
+
+In the helper:
+
+1. Paste your MusicKit developer token.
+2. Click **Configure**.
+3. Click **Authorize**.
+4. Search Apple Music or load your library playlists.
+5. Play a song.
+6. Click **Start FH6 Stream**.
+7. In the dashboard, switch the active source to **Apple Music** if it is not already active.
+
+#### Avoiding Duplicate Helper Audio
+
+The helper must render Apple Music audio so Windows can capture it. If the helper outputs to your normal headphones or speakers, you will hear both the helper playback and the in-game radio playback.
+
+Recommended setup:
+
+1. Install a virtual audio cable.
+2. Open **Windows Settings > System > Sound > Volume mixer**.
+3. Route `fh6_apple_helper.exe` / `msedgewebview2.exe` output to the virtual cable input.
+4. Keep FH6 output on your normal headphones or speakers.
+5. Do not monitor the virtual cable output.
+
+With this setup, the helper renders Apple Music to the virtual device, the helper captures that process audio, and FH6 plays the captured PCM through the in-game radio.
+
+#### Recommended External Capture Setting
+
+`external_capture` was used during early testing and is not required for the Apple Music helper path.
+
+Recommended config:
+
+```toml
+[external_capture]
+enabled = false
+device = "default"
+gain = 1.0
+```
+
+#### Troubleshooting Apple Music
+
+| Symptom | Fix |
+|---|---|
+| Helper can search but only plays previews | Click **Authorize** and confirm the Apple ID has an active Apple Music subscription. |
+| Authorization fails | Make sure the helper page is loaded from `http://127.0.0.1:8421/`, not `file://`. |
+| Start FH6 Stream says the mod must start first | Start FH6 first and make sure `[apple_music] enabled = true` in the runtime config. |
+| Audio plays in helper but not in-game | Switch the active source to `apple_music`, click **Start FH6 Stream**, then check `fh6-radio\bridge.log` for `PCM helper connected`. |
+| Audio plays both in helper and in-game | Route the helper / WebView2 output to a virtual audio cable and leave FH6 on your normal output device. |
+| Build cannot find WebView2 | Install `Microsoft.Web.WebView2` into `external/` or set `WEBVIEW2_ROOT`. |
+| Helper opens but MusicKit does not authorize | Confirm the local HTTP server is running on `127.0.0.1:8421`. |
 
 ## Uninstall
 
