@@ -129,7 +129,7 @@ Then start the helper:
 .\build\Release\fh6_apple_helper.exe
 ```
 
-In the helper:
+In the helper after starting Forza Horizon 6 & verifying FH6 Universal Radio is running:
 
 1. Paste your MusicKit developer token.
 2. Click **Configure**.
