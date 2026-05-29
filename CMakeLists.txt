@@ -43,6 +43,10 @@ add_library(version SHARED
     src/sources/external_capture_source.cpp
 )
 
+add_executable(fh6_apple_helper WIN32
+    tools/apple_helper/main.cpp
+)
+
 target_include_directories(version PRIVATE
     include
     third_party/nlohmann
@@ -51,6 +55,10 @@ target_include_directories(version PRIVATE
 )
 
 target_link_libraries(version PRIVATE ws2_32 bcrypt psapi ole32 uuid)
+
+target_link_libraries(fh6_apple_helper PRIVATE
+    user32
+)
 
 set_target_properties(version PROPERTIES
     OUTPUT_NAME version
