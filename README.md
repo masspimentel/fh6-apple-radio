@@ -67,13 +67,13 @@ Apple Music helper playback requires:
 - Microsoft Edge WebView2 Runtime.
 - Microsoft WebView2 SDK package for source builds.
 - Windows 10 build 20348 or newer, or Windows 11, for process-specific loopback capture.
-- A virtual audio cable if you do not want to hear helper playback directly.
+- A virtual audio cable is required if you do not want to hear helper playback directly.
 
 Do not commit your `.p8` private key, generated developer token / JWT, `Keys.txt`, or local `config.toml`.
 
 #### Apple Music Configuration
 
-Add or verify the following section in your runtime config:
+Verify the following section in your runtime config (found at "PATH TO FORZA HORIZON 6 GAME FOLDER\ForzaHorizon6\fh6-radio\config.toml") :
 
 ```toml
 [apple_music]
@@ -116,7 +116,7 @@ external/
 
 #### Running the Apple Music Helper
 
-Until the helper has an embedded static HTTP server, start a local HTTP server for the helper UI:
+The helper does not currently start a local server, use the instruction below to start one (Python 3.8+ required):
 
 ```powershell
 cd tools\apple_helper\web
@@ -137,7 +137,7 @@ In the helper:
 4. Search Apple Music or load your library playlists.
 5. Play a song.
 6. Click **Start FH6 Stream**.
-7. In the dashboard, switch the active source to **Apple Music** if it is not already active.
+7. In the main dashboard (localhost), switch the active source to **Apple Music** if it is not already active.
 
 #### Avoiding Duplicate Helper Audio
 
@@ -149,22 +149,8 @@ Recommended setup:
 2. Open **Windows Settings > System > Sound > Volume mixer**.
 3. Route `fh6_apple_helper.exe` / `msedgewebview2.exe` output to the virtual cable input.
 4. Keep FH6 output on your normal headphones or speakers.
-5. Do not monitor the virtual cable output.
 
 With this setup, the helper renders Apple Music to the virtual device, the helper captures that process audio, and FH6 plays the captured PCM through the in-game radio.
-
-#### Recommended External Capture Setting
-
-`external_capture` was used during early testing and is not required for the Apple Music helper path.
-
-Recommended config:
-
-```toml
-[external_capture]
-enabled = false
-device = "default"
-gain = 1.0
-```
 
 #### Troubleshooting Apple Music
 
