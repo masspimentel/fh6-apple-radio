@@ -2,12 +2,17 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 
+#include "process_loopback_capture.hpp"
+
+#include <thread>
+
 #include <windows.h>
 #include <wrl.h>
 #include <WebView2.h>
 
 #include <filesystem>
 #include <string>
+#include <iostream>
 
 using Microsoft::WRL::Callback;
 
@@ -66,13 +71,12 @@ LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 
 void init_webview(HWND hwnd) {
     CreateCoreWebView2EnvironmentWithOptions(
-        nullptr,
-        nullptr,
-        nullptr,
+        nullptr, nullptr, nullptr,
         Callback<ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler>(
             [hwnd](HRESULT result, ICoreWebView2Environment* env) -> HRESULT {
                 if (FAILED(result) || !env) {
-                    MessageBoxW(hwnd, L"Failed to create WebView2 environment.", L"FH6 Apple Helper", MB_ICONERROR);
+                    MessageBoxW(hwnd, L"Failed to create WebView2 environment.",
+                                L"FH6 Apple Helper", MB_ICONERROR);
                     return result;
                 }
 
@@ -81,7 +85,8 @@ void init_webview(HWND hwnd) {
                     Callback<ICoreWebView2CreateCoreWebView2ControllerCompletedHandler>(
                         [hwnd](HRESULT result, ICoreWebView2Controller* controller) -> HRESULT {
                             if (FAILED(result) || !controller) {
-                                MessageBoxW(hwnd, L"Failed to create WebView2 controller.", L"FH6 Apple Helper", MB_ICONERROR);
+                                MessageBoxW(hwnd, L"Failed to create WebView2 controller.",
+                                            L"FH6 Apple Helper", MB_ICONERROR);
                                 return result;
                             }
 
@@ -90,25 +95,81 @@ void init_webview(HWND hwnd) {
 
                             g_controller->get_CoreWebView2(&g_webview);
 
+                            EventRegistrationToken token{};
+
+                            g_webview->add_WebMessageReceived(
+                                Callback<ICoreWebView2WebMessageReceivedEventHandler>(
+                                    [](ICoreWebView2*,
+                                       ICoreWebView2WebMessageReceivedEventArgs* args) -> HRESULT {
+                                        LPWSTR msg = nullptr;
+                                        args->TryGetWebMessageAsString(&msg);
+
+                                        std::wstring message = msg ? msg : L"";
+
+                                        if (msg) {
+                                            CoTaskMemFree(msg);
+                                        }
+
+                                        if (message.find(L"capture-test") != std::wstring::npos) {
+                                            std::thread([] {
+                                                try {
+                                                    const auto out =
+                                                        std::filesystem::path{exe_dir()} /
+                                                        L"capture_test.wav";
+
+                                                    const bool ok = fh6::apple_helper::
+                                                        capture_self_process_tree_to_wav(out, 10);
+
+                                                    if (ok) {
+                                                        const auto stats =
+                                                            fh6::apple_helper::last_capture_error();
+
+                                                        const auto msg =
+                                                            out.wstring() + L"\n\n" +
+                                                            (stats.empty()
+                                                                 ? L"No capture stats available."
+                                                                 : stats);
+
+                                                        MessageBoxW(nullptr, msg.c_str(),
+                                                                    L"Capture complete", MB_OK);
+                                                    } else {
+                                                        const auto err =
+                                                            fh6::apple_helper::last_capture_error();
+
+                                                        MessageBoxW(
+                                                            nullptr,
+                                                            err.empty() ? L"Capture failed with no "
+                                                                          L"error detail."
+                                                                        : err.c_str(),
+                                                            L"Capture failed", MB_ICONERROR);
+                                                    }
+                                                } catch (const std::exception& e) {
+                                                    MessageBoxA(nullptr, e.what(),
+                                                                "Capture exception", MB_ICONERROR);
+                                                } catch (...) {
+                                                    MessageBoxW(nullptr,
+                                                                L"Unknown capture exception.",
+                                                                L"Capture exception", MB_ICONERROR);
+                                                }
+                                            }).detach();
+                                        }
+
+                                        return S_OK;
+                                    })
+                                    .Get(),
+                                &token);
+
                             resize_webview(hwnd);
 
-                            const auto html_path =
-                                std::filesystem::path{exe_dir()} /
-                                L"apple_helper" /
-                                L"index.html";
-
-                            const auto uri = file_uri(html_path.wstring());
-                            g_webview->Navigate(uri.c_str());
+                            g_webview->Navigate(L"http://127.0.0.1:8421/");
 
                             return S_OK;
-                        }
-                    ).Get()
-                );
+                        })
+                        .Get());
 
                 return S_OK;
-            }
-        ).Get()
-    );
+            })
+            .Get());
 }
 
 } // namespace

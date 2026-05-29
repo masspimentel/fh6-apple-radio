@@ -155,6 +155,19 @@ $("authorize").addEventListener("click", async () => {
     }
 });
 
+$("capture-test").addEventListener("click", () => {
+    setStatus("Capture test requested.");
+
+    if (window.chrome?.webview) {
+        window.chrome.webview.postMessage(JSON.stringify({
+            type: "capture-test",
+            seconds: 10
+        }));
+    } else {
+        setStatus("WebView2 host messaging is not available.");
+    }
+});
+
 $("search-form").addEventListener("submit", async e => {
     e.preventDefault();
 

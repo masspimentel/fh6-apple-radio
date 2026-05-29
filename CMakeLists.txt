@@ -61,6 +61,7 @@ set(WEBVIEW2_ROOT "${CMAKE_SOURCE_DIR}/external/Microsoft.Web.WebView2.1.0.3967.
 
 add_executable(fh6_apple_helper WIN32
     tools/apple_helper/main.cpp
+    tools/apple_helper/process_loopback_capture.cpp
 )
 
 target_include_directories(fh6_apple_helper PRIVATE
@@ -71,6 +72,8 @@ target_link_libraries(fh6_apple_helper PRIVATE
     user32
     ole32
     shell32
+    avrt
+    windowsapp
     "${WEBVIEW2_ROOT}/build/native/x64/WebView2Loader.dll.lib"
 )
 
