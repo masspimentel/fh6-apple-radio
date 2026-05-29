@@ -45,39 +45,176 @@
         .muted {
             color: #aaa;
         }
+
+        .card {
+            border: 1px solid #333;
+            padding: 16px;
+            margin: 16px 0;
+            background: #151515;
+            border-radius: 8px;
+        }
+
+        .layout {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+
+        .now-row {
+            display: flex;
+            gap: 14px;
+            align-items: center;
+        }
+
+        #now-artwork {
+            background: #222;
+            object-fit: cover;
+            border-radius: 6px;
+        }
+
+        .controls {
+            margin-top: 12px;
+        }
+
+        .result {
+            display: block;
+            width: 100%;
+            text-align: left;
+            margin: 6px 0;
+            padding: 10px;
+            background: #222;
+            color: #eee;
+            border: 1px solid #444;
+            border-radius: 6px;
+        }
+
+        .result:hover {
+            background: #2b2b2b;
+        }
+
+        .toasts {
+            position: fixed;
+            right: 20px;
+            bottom: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            z-index: 9999;
+            pointer-events: none;
+        }
+
+        .toast {
+            min-width: 240px;
+            max-width: 420px;
+            padding: 12px 14px;
+            border-radius: 8px;
+            background: #222;
+            color: #eee;
+            border: 1px solid #444;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+            font-size: 14px;
+            opacity: 0;
+            transform: translateY(8px);
+            transition: opacity 160ms ease, transform 160ms ease;
+        }
+
+        .toast.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .toast.success {
+            border-color: #2f7d32;
+        }
+
+        .toast.error {
+            border-color: #b3261e;
+        }
+
+        .toast.info {
+            border-color: #3f6fa8;
+        }
     </style>
 </head>
 <body>
     <h1>FH6 Apple Music Helper</h1>
 
     <p class="muted">
-        This helper hosts Apple Music playback in a dedicated process.
+        Apple Music playback is captured and streamed into FH6 when FH6 Stream is active.
     </p>
 
-    <label>
-        Developer Token
-        <input id="token" type="password" placeholder="Paste MusicKit developer token">
-    </label>
+    <section class="card">
+        <h2>Connection</h2>
 
-    <label>
-        Storefront
-        <input id="storefront" type="text" value="ca">
-    </label>
+        <label>
+            Developer Token
+            <input id="token" type="password" placeholder="Paste MusicKit developer token">
+        </label>
 
-    <button id="configure">Configure</button>
-    <button id="authorize">Authorize</button>
-    <button id="capture-test">Capture 10s WAV Test</button>
+        <label>
+            Storefront
+            <input id="storefront" type="text" value="ca">
+        </label>
 
-    <hr>
+        <button id="configure">Configure</button>
+        <button id="authorize">Authorize</button>
+        <button id="start-stream">Start FH6 Stream</button>
+        <button id="stop-stream">Stop FH6 Stream</button>
+        <button id="capture-test">Capture 10s WAV Test</button>
+        <button id="clear-settings">Clear Saved Settings</button>
+    </section>
 
-    <form id="search-form">
-        <input id="query" type="text" placeholder="Search Apple Music">
-        <button type="submit">Search</button>
-    </form>
+    <section class="card now-playing">
+        <h2>Now Playing</h2>
+
+        <div class="now-row">
+            <img id="now-artwork" alt="" width="96" height="96">
+            <div>
+                <strong id="now-title">Nothing playing</strong>
+                <div id="now-artist" class="muted"></div>
+                <div id="now-album" class="muted"></div>
+            </div>
+        </div>
+
+        <div class="controls">
+            <button id="prev">Previous</button>
+            <button id="play-pause">Play/Pause</button>
+            <button id="next">Next</button>
+        </div>
+    </section>
+
+    <section class="card">
+        <h2>Search</h2>
+
+        <form id="search-form">
+            <input id="query" type="text" placeholder="Search Apple Music">
+            <button type="submit">Search Catalog</button>
+            <button id="search-library" type="button">Search Library</button>
+        </form>
+
+        <div id="search-results"></div>
+    </section>
+
+    <section class="card">
+        <h2>Your Library Playlists</h2>
+
+        <button id="load-playlists">Load Playlists</button>
+
+        <div class="layout">
+            <div>
+                <h3>Playlists</h3>
+                <div id="playlists"></div>
+            </div>
+
+            <div>
+                <h3>Tracks</h3>
+                <div id="playlist-tracks"></div>
+            </div>
+        </div>
+    </section>
 
     <div id="status" class="muted"></div>
-    <div id="results"></div>
-
+    <div id="toasts" class="toasts"></div>
     <script src="apple_player.js"></script>
 </body>
 </html>

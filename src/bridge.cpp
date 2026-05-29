@@ -182,10 +182,14 @@ void run_bridge(HMODULE self) noexcept {
     });
 
     http::HttpServer http{mgr, bridge, store, cfg.general.port, ui_dir};
-    log::info("[bridge] running on port {}", cfg.general.port, "[external_capture] config enabled={}, device='{}', gain={}",
-    cfg.external_capture.enabled,
-    cfg.external_capture.device,
-    cfg.external_capture.gain);
+    log::info("[bridge] running on port {}", cfg.general.port);
+
+    log::info(
+        "[external_capture] config enabled={}, device='{}', gain={}",
+        cfg.external_capture.enabled,
+        cfg.external_capture.device,
+        cfg.external_capture.gain
+    );
 
     for (;;) Sleep(60'000);
 }

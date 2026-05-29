@@ -27,6 +27,7 @@
 #include <vector>
 #include <limits>
 #include <tlhelp32.h>
+#include <mutex>
 
 using Microsoft::WRL::ClassicCom;
 using Microsoft::WRL::ComPtr;
@@ -38,6 +39,12 @@ namespace fh6::apple_helper {
 namespace {
 
 std::wstring g_last_error;
+
+std::atomic_bool g_stream_running{false};
+std::thread g_stream_thread;
+std::mutex g_stream_mutex;
+
+constexpr wchar_t kPipeName[] = L"\\\\.\\pipe\\fh6_apple_radio_pcm";
 
 void set_error(const std::wstring& msg) { g_last_error = msg; }
 
@@ -353,6 +360,164 @@ DWORD find_direct_webview2_child_pid(DWORD parent_pid) {
     return found_pid;
 }
 
+DWORD find_capture_pid() {
+    const DWORD self_pid         = GetCurrentProcessId();
+    const DWORD webview_root_pid = find_direct_webview2_child_pid(self_pid);
+    return webview_root_pid ? webview_root_pid : self_pid;
+}
+
+void pcm_pipe_stream_worker() {
+    set_error(L"Starting PCM pipe stream...");
+
+    const DWORD capture_pid = find_capture_pid();
+
+    HRESULT hr                = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    const bool co_initialized = SUCCEEDED(hr);
+
+    ComPtr<IAudioClient> audio_client = activate_process_loopback_client(capture_pid);
+
+    if (!audio_client) {
+        set_error(L"Pipe stream failed: activate_process_loopback_client failed. target PID=" +
+                  std::to_wstring(capture_pid));
+        g_stream_running.store(false);
+        if (co_initialized) CoUninitialize();
+        return;
+    }
+
+    WAVEFORMATEXTENSIBLE fallback_format{};
+    fallback_format.Format.wFormatTag     = WAVE_FORMAT_EXTENSIBLE;
+    fallback_format.Format.nChannels      = 2;
+    fallback_format.Format.nSamplesPerSec = 48000;
+    fallback_format.Format.wBitsPerSample = 32;
+    fallback_format.Format.nBlockAlign =
+        fallback_format.Format.nChannels * fallback_format.Format.wBitsPerSample / 8;
+    fallback_format.Format.nAvgBytesPerSec =
+        fallback_format.Format.nSamplesPerSec * fallback_format.Format.nBlockAlign;
+    fallback_format.Format.cbSize = sizeof(WAVEFORMATEXTENSIBLE) - sizeof(WAVEFORMATEX);
+    fallback_format.Samples.wValidBitsPerSample = 32;
+    fallback_format.dwChannelMask               = SPEAKER_FRONT_LEFT | SPEAKER_FRONT_RIGHT;
+    fallback_format.SubFormat                   = KSDATAFORMAT_SUBTYPE_IEEE_FLOAT;
+
+    WAVEFORMATEX* mix_format = nullptr;
+    bool free_mix_format     = false;
+
+    hr = audio_client->GetMixFormat(&mix_format);
+
+    if (FAILED(hr) || !mix_format) {
+        mix_format      = &fallback_format.Format;
+        free_mix_format = false;
+    } else {
+        free_mix_format = true;
+    }
+
+    const REFERENCE_TIME buffer_duration = 10000000;
+
+    hr = audio_client->Initialize(AUDCLNT_SHAREMODE_SHARED, AUDCLNT_STREAMFLAGS_LOOPBACK,
+                                  buffer_duration, 0, mix_format, nullptr);
+
+    if (FAILED(hr)) {
+        set_error(L"Pipe stream failed: IAudioClient::Initialize failed: " + hr_hex(hr));
+        if (free_mix_format) CoTaskMemFree(mix_format);
+        g_stream_running.store(false);
+        if (co_initialized) CoUninitialize();
+        return;
+    }
+
+    ComPtr<IAudioCaptureClient> capture_client;
+    hr = audio_client->GetService(__uuidof(IAudioCaptureClient),
+                                  reinterpret_cast<void**>(capture_client.GetAddressOf()));
+
+    if (FAILED(hr) || !capture_client) {
+        set_error(L"Pipe stream failed: GetService failed: " + hr_hex(hr));
+        if (free_mix_format) CoTaskMemFree(mix_format);
+        g_stream_running.store(false);
+        if (co_initialized) CoUninitialize();
+        return;
+    }
+
+    HANDLE pipe = CreateFileW(kPipeName, GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, 0, nullptr);
+
+    if (pipe == INVALID_HANDLE_VALUE) {
+        set_error(L"Pipe stream failed: could not connect to named pipe. Start FH6/mod first.");
+        if (free_mix_format) CoTaskMemFree(mix_format);
+        g_stream_running.store(false);
+        if (co_initialized) CoUninitialize();
+        return;
+    }
+
+    hr = audio_client->Start();
+
+    if (FAILED(hr)) {
+        set_error(L"Pipe stream failed: IAudioClient::Start failed: " + hr_hex(hr));
+        CloseHandle(pipe);
+        if (free_mix_format) CoTaskMemFree(mix_format);
+        g_stream_running.store(false);
+        if (co_initialized) CoUninitialize();
+        return;
+    }
+
+    set_error(L"PCM pipe stream running. target PID=" + std::to_wstring(capture_pid));
+
+    while (g_stream_running.load()) {
+        UINT32 packet_frames = 0;
+        hr                   = capture_client->GetNextPacketSize(&packet_frames);
+
+        if (FAILED(hr)) {
+            break;
+        }
+
+        if (packet_frames == 0) {
+            Sleep(5);
+            continue;
+        }
+
+        BYTE* data             = nullptr;
+        DWORD flags            = 0;
+        UINT64 device_position = 0;
+        UINT64 qpc_position    = 0;
+
+        hr = capture_client->GetBuffer(&data, &packet_frames, &flags, &device_position,
+                                       &qpc_position);
+
+        if (FAILED(hr)) {
+            break;
+        }
+
+        if (!(flags & AUDCLNT_BUFFERFLAGS_SILENT)) {
+            auto converted = convert_to_48k_s16_stereo(mix_format, data, packet_frames);
+
+            if (!converted.empty()) {
+                DWORD written     = 0;
+                const DWORD bytes = static_cast<DWORD>(converted.size() * sizeof(std::int16_t));
+
+                const BOOL ok = WriteFile(pipe, converted.data(), bytes, &written, nullptr);
+
+                if (!ok) {
+                    capture_client->ReleaseBuffer(packet_frames);
+                    break;
+                }
+            }
+        }
+
+        capture_client->ReleaseBuffer(packet_frames);
+    }
+
+    audio_client->Stop();
+
+    CloseHandle(pipe);
+
+    if (free_mix_format) {
+        CoTaskMemFree(mix_format);
+    }
+
+    if (co_initialized) {
+        CoUninitialize();
+    }
+
+    g_stream_running.store(false);
+    set_error(L"PCM pipe stream stopped.");
+}
+
 } // namespace
 
 bool capture_self_process_tree_to_wav(const std::filesystem::path& output_path, int seconds) {
@@ -582,6 +747,26 @@ bool capture_self_process_tree_to_wav(const std::filesystem::path& output_path, 
               std::to_wstring(max_abs_sample));
 
     return true;
+}
+
+void start_pcm_pipe_stream() {
+    std::scoped_lock lock{g_stream_mutex};
+
+    if (g_stream_running.load()) {
+        set_error(L"PCM pipe stream is already running.");
+        return;
+    }
+
+    g_stream_running.store(true);
+
+    g_stream_thread = std::thread([] { pcm_pipe_stream_worker(); });
+
+    g_stream_thread.detach();
+}
+
+void stop_pcm_pipe_stream() {
+    g_stream_running.store(false);
+    set_error(L"PCM pipe stream stop requested.");
 }
 
 std::wstring last_capture_error() { return g_last_error; }

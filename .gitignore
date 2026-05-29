@@ -8,11 +8,16 @@ third_party/
 # Dependency directories
 node_modules/
 
-# Apple Music tokens
+# Local/generated
+.vs/
+build/
+external/
+
+# Secrets / local config
 *.p8
+Keys.txt
+AppleMusic/Keys.txt
+AppleMusic/AuthKey_*.p8
 config.toml
 fh6-radio/config.toml
-echo *.p8 
-echo Keys.txt
-echo AppleMusic/Keys.txt 
-echo AppleMusic/AuthKey_*.p8 
+*.jwt

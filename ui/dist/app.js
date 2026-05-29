@@ -562,8 +562,8 @@ function renderAppleMusicCard() {
 async function playAppleMusicItem(item, kind) {
   const music = await ensureAppleMusicConfig();
 
-  await api.send("/api/source/switch", { source: "external_capture" });
-  await api.send("/api/source/external_capture/play");
+  //await api.send("/api/source/switch", { source: "external_capture" });
+    //await api.send("/api/source/external_capture/play");
 
   if (kind === "catalog-song") {
     await music.setQueue({ song: item.id });

@@ -95,6 +95,9 @@ void init_webview(HWND hwnd) {
 
                             g_controller->get_CoreWebView2(&g_webview);
 
+                            ICoreWebView2_8* webview8 = nullptr;
+
+
                             EventRegistrationToken token{};
 
                             g_webview->add_WebMessageReceived(
@@ -152,6 +155,28 @@ void init_webview(HWND hwnd) {
                                                                 L"Capture exception", MB_ICONERROR);
                                                 }
                                             }).detach();
+                                        } else if (message.find(L"start-stream") !=
+                                                   std::wstring::npos) {
+                                            fh6::apple_helper::start_pcm_pipe_stream();
+
+                                            const auto msg =
+                                                fh6::apple_helper::last_capture_error();
+
+                                            MessageBoxW(nullptr,
+                                                        msg.empty() ? L"Start stream requested."
+                                                                    : msg.c_str(),
+                                                        L"FH6 Stream", MB_OK);
+                                        } else if (message.find(L"stop-stream") !=
+                                                   std::wstring::npos) {
+                                            fh6::apple_helper::stop_pcm_pipe_stream();
+
+                                            const auto msg =
+                                                fh6::apple_helper::last_capture_error();
+
+                                            MessageBoxW(nullptr,
+                                                        msg.empty() ? L"Stop stream requested."
+                                                                    : msg.c_str(),
+                                                        L"FH6 Stream", MB_OK);
                                         }
 
                                         return S_OK;
